@@ -1,0 +1,37 @@
+{% extends 'campaigns/base.html' %}
+{% block content %}
+<h1>Статистика: {{ campaign.name }}</h1>
+
+<h3>Общая</h3>
+<ul>
+    <li>Всего обходов: {{ total_visits }}</li>
+    <li>Открыто: {{ opened_doors }} ({{ percent_opened }}%)</li>
+    <li>Не открыто: {{ closed_doors }}</li>
+    <li>Позитивных: {{ positive }}, нейтральных: {{ neutral }}, негативных: {{ negative }}</li>
+    <li>Собрано контактов: {{ contacts_collected }} ({{ percent_contacts }}%)</li>
+</ul>
+
+<h3>По домам</h3>
+<table class="table">
+    <thead>
+        <tr>
+            <th>Адрес</th><th>Обходов</th><th>Открыто</th><th>%</th>
+            <th>👍</th><th>😐</th><th>👎</th><th>Контактов</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for hs in house_stats %}
+        <tr>
+            <td>{{ hs.house.street }}, {{ hs.house.house_number }}</td>
+            <td>{{ hs.total_visits }}</td>
+            <td>{{ hs.opened_doors }}</td>
+            <td>{{ hs.percent_opened }}%</td>
+            <td>{{ hs.positive }}</td>
+            <td>{{ hs.neutral }}</td>
+            <td>{{ hs.negative }}</td>
+            <td>{{ hs.contacts }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

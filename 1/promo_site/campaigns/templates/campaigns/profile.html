@@ -1,0 +1,18 @@
+{% extends 'campaigns/base.html' %}
+{% block content %}
+<h1>{{ user.get_full_name }}</h1>
+<p>Email: {{ user.email }}</p>
+<p>Телефон: {{ profile.phone }}</p>
+<a href="{% url 'create_campaign' %}" class="btn btn-primary">Создать кампанию</a>
+<h3 class="mt-4">Мои кампании</h3>
+<ul>
+    {% for c in campaigns %}
+        <li>
+            <a href="{% url 'campaign_detail' c.id %}">{{ c.name }}</a>
+            | <a href="{% url 'campaign_statistics' c.id %}">Статистика</a>
+        </li>
+    {% empty %}
+        <li>Пока нет кампаний.</li>
+    {% endfor %}
+</ul>
+{% endblock %}

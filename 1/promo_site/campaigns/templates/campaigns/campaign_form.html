@@ -1,0 +1,9 @@
+{% extends 'campaigns/base.html' %}
+{% block content %}
+<h1>Создать кампанию</h1>
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button class="btn btn-success">Создать</button>
+</form>
+{% endblock %}

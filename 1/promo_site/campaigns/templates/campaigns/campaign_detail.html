@@ -1,0 +1,68 @@
+{% extends 'campaigns/base.html' %}
+{% block content %}
+<h1>{{ campaign.name }}</h1>
+<a href="{% url 'campaign_statistics' campaign.id %}" class="btn btn-info">Статистика</a>
+
+<!-- Участники -->
+<h3 class="mt-4">
+    Участники
+    <button class="btn btn-sm btn-outline-primary ms-2" type="button" data-bs-toggle="collapse" data-bs-target="#participantForm" aria-expanded="false" aria-controls="participantForm">
+        + Добавить участника
+    </button>
+</h3>
+<ul>
+    {% for participant in campaign.participants.all %}
+        <li>{{ participant.username }}</li>
+    {% empty %}
+        <li>Нет других участников</li>
+    {% endfor %}
+</ul>
+
+<!-- Сворачиваемая форма добавления участника -->
+<div class="collapse mt-2" id="participantForm">
+    <form method="post" class="row g-2">
+        {% csrf_token %}
+        <input type="hidden" name="add_participant" value="1">
+        <div class="col-auto">
+            {{ participant_form.username }}
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-primary">Добавить</button>
+        </div>
+    </form>
+</div>
+
+<!-- Дома -->
+<h3 class="mt-4">
+    Дома
+    <button class="btn btn-sm btn-outline-primary ms-2" type="button" data-bs-toggle="collapse" data-bs-target="#houseForm" aria-expanded="false" aria-controls="houseForm">
+        + Добавить дом
+    </button>
+</h3>
+
+<!-- Сворачиваемая форма добавления дома -->
+<div class="collapse mt-2" id="houseForm">
+    <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="add_house" value="1">
+        {{ house_form.as_p }}
+        <button type="submit" class="btn btn-primary">Добавить</button>
+    </form>
+</div>
+
+<!-- Список домов -->
+<div class="mt-3">
+    {% for h in houses %}
+        <div class="card mb-2">
+            <div class="card-body">
+                <a href="{% url 'house_detail' campaign.id h.id %}">
+                    {{ h.city }}, {{ h.street }}, {{ h.house_number }}
+                </a>
+                (подъездов: {{ h.entrances }}, квартир: {{ h.total_apartments }})
+            </div>
+        </div>
+    {% empty %}
+        <p>Домов ещё нет.</p>
+    {% endfor %}
+</div>
+{% endblock %}
