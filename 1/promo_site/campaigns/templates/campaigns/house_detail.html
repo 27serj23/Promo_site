@@ -1,38 +1,30 @@
-{% extends 'campaigns/base.html' %}
-{% block content %}
-<h1>{{ house.city }}, {{ house.street }}, {{ house.house_number }}</h1>
-<a href="{% url 'campaign_detail' campaign.id %}" class="btn btn-secondary">← Назад</a>
+<!-- Пагинация -->
+{% if visits.has_other_pages %}
+<nav>
+    <ul class="pagination">
+        {% if visits.has_previous %}
+            <li class="page-item">
+                <a class="page-link" href="?page=1">&laquo; Первая</a>
+            </li>
+            <li class="page-item">
+                <a class="page-link" href="?page={{ visits.previous_page_number }}">Назад</a>
+            </li>
+        {% endif %}
 
-<h3 class="mt-4">Зафиксировать обход</h3>
-<form method="post">
-    {% csrf_token %}
-    {{ visit_form.as_p }}
-    <button class="btn btn-success">Сохранить</button>
-</form>
+        <li class="page-item disabled">
+            <span class="page-link">
+                Страница {{ visits.number }} из {{ visits.paginator.num_pages }}
+            </span>
+        </li>
 
-<h3>Все обходы</h3>
-<table class="table">
-    <thead>
-        <tr>
-            <th>Подъезд</th><th>Квартира</th><th>Дверь</th><th>Реакция</th>
-            <th>Контакт</th><th>Телефон</th><th>Комментарий</th><th>Дата</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for v in visits %}
-        <tr>
-            <td>{{ v.entrance }}</td>
-            <td>{{ v.apartment_number }}</td>
-            <td>{{ v.opened_door|yesno:"Открыли,Не открыли" }}</td>
-            <td>{{ v.get_reaction_display|default:"—" }}</td>
-            <td>{{ v.contact_name|default:"—" }}</td>
-            <td>{{ v.contact_phone|default:"—" }}</td>
-            <td>{{ v.comment|default:"—" }}</td>
-            <td>{{ v.visited_at|date:"d.m.Y H:i" }}</td>
-        </tr>
-        {% empty %}
-        <tr><td colspan="8">Обходов пока нет.</td></tr>
-        {% endfor %}
-    </tbody>
-</table>
-{% endblock %}
+        {% if visits.has_next %}
+            <li class="page-item">
+                <a class="page-link" href="?page={{ visits.next_page_number }}">Вперёд</a>
+            </li>
+            <li class="page-item">
+                <a class="page-link" href="?page={{ visits.paginator.num_pages }}">Последняя &raquo;</a>
+            </li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
