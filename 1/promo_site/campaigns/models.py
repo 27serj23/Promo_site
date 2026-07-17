@@ -1,9 +1,10 @@
+# Модели базы данных для промо-сайта
 from django.db import models
 from django.contrib.auth.models import User
 
 
 class Profile(models.Model):
-    """Хранит телефон пользователя (email уже есть в User)."""
+    """Дополнительные данные пользователя (телефон)."""
     user = models.OneToOneField(User, on_delete=models.CASCADE, verbose_name='Пользователь')
     phone = models.CharField(max_length=20, verbose_name='Телефон')
 
@@ -16,15 +17,10 @@ class Profile(models.Model):
 
 
 class Campaign(models.Model):
+    """Промо-кампания: название, владелец, участники."""
     name = models.CharField(max_length=200, verbose_name='Название')
-    owner = models.ForeignKey(
-        User, on_delete=models.CASCADE, related_name='campaigns',
-        verbose_name='Владелец'
-    )
-    participants = models.ManyToManyField(
-        User, related_name='participated_campaigns', blank=True,
-        verbose_name='Участники'
-    )
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='campaigns', verbose_name='Владелец')
+    participants = models.ManyToManyField(User, related_name='participated_campaigns', blank=True, verbose_name='Участники')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата создания')
 
     class Meta:
@@ -36,10 +32,8 @@ class Campaign(models.Model):
 
 
 class House(models.Model):
-    campaign = models.ForeignKey(
-        Campaign, on_delete=models.CASCADE, related_name='houses',
-        verbose_name='Кампания'
-    )
+    """Дом, который обходят в рамках кампании."""
+    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name='houses', verbose_name='Кампания')
     city = models.CharField(max_length=100, verbose_name='Город')
     street = models.CharField(max_length=200, verbose_name='Улица')
     house_number = models.CharField(max_length=20, verbose_name='Номер дома')
@@ -48,6 +42,7 @@ class House(models.Model):
 
     @property
     def total_apartments(self):
+        """Общее количество квартир в доме."""
         return self.entrances * self.apartments_per_entrance
 
     class Meta:
@@ -59,20 +54,14 @@ class House(models.Model):
 
 
 class ApartmentVisit(models.Model):
-    house = models.ForeignKey(
-        House, on_delete=models.CASCADE, related_name='visits',
-        verbose_name='Дом'
-    )
+    """Запись об одном поквартирном обходе."""
+    house = models.ForeignKey(House, on_delete=models.CASCADE, related_name='visits', verbose_name='Дом')
     entrance = models.PositiveIntegerField(verbose_name='Подъезд')
     apartment_number = models.PositiveIntegerField(verbose_name='Номер квартиры')
     opened_door = models.BooleanField(verbose_name='Дверь открыли')
     reaction = models.CharField(
         max_length=20,
-        choices=[
-            ('positive', 'Позитивно'),
-            ('neutral', 'Нейтрально'),
-            ('negative', 'Негативно')
-        ],
+        choices=[('positive', 'Позитивно'), ('neutral', 'Нейтрально'), ('negative', 'Негативно')],
         blank=True, null=True,
         verbose_name='Реакция'
     )
