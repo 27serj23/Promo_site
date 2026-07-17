@@ -1,10 +1,16 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from django.contrib.auth.models import User
+from django.contrib.auth.models import User, Group
 from .models import Profile, Campaign, House, ApartmentVisit
 
 
-# Инлайн для телефона
+# Русские названия для встроенных моделей
+User._meta.verbose_name = 'Пользователь'
+User._meta.verbose_name_plural = 'Пользователи'
+Group._meta.verbose_name = 'Группа'
+Group._meta.verbose_name_plural = 'Группы'
+
+
 class ProfileInline(admin.StackedInline):
     model = Profile
     can_delete = False
@@ -12,7 +18,6 @@ class ProfileInline(admin.StackedInline):
     fields = ['phone']
 
 
-# Расширенная админка пользователя
 class UserAdmin(BaseUserAdmin):
     inlines = [ProfileInline]
 
@@ -20,7 +25,6 @@ class UserAdmin(BaseUserAdmin):
 admin.site.unregister(User)
 admin.site.register(User, UserAdmin)
 
-# -------- Новые регистрации для управления кампаниями --------
 @admin.register(Campaign)
 class CampaignAdmin(admin.ModelAdmin):
     list_display = ('name', 'owner', 'created_at')
