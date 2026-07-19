@@ -1,25 +1,30 @@
-from django.shortcuts import render, redirect, get_object_or_404
+# Представления: принимают запросы, вызывают сервисы, возвращают страницы
+from django.shortcuts import render, redirect
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from django.contrib.auth.models import User
+from django.http import Http404
 
-from .models import Campaign, House, Profile
+from .models import Profile
 from .forms import (
     UserRegistrationForm, CampaignForm, HouseForm,
     ApartmentVisitForm, AddParticipantForm
 )
 from .services import (
-    create_campaign, add_house_to_campaign,
-    record_visit, get_campaign_statistics
+    create_campaign, add_house_to_campaign, record_visit,
+    get_campaign_statistics, add_participant_to_campaign,
+    get_campaign_for_user, get_campaign_detail_data,
+    get_house_with_visits
 )
 
 
 def index(request):
+    """Главная страница."""
     return render(request, 'campaigns/index.html')
 
 
 def register(request):
+    """Регистрация нового пользователя."""
     if request.method == 'POST':
         form = UserRegistrationForm(request.POST)
         if form.is_valid():
@@ -34,8 +39,8 @@ def register(request):
 
 @login_required
 def profile(request):
+    """Личный кабинет: данные профиля и список кампаний."""
     campaigns = request.user.campaigns.all()
-    # Гарантируем, что профиль существует (для старых пользователей)
     profile, _ = Profile.objects.get_or_create(user=request.user, defaults={'phone': ''})
     return render(request, 'campaigns/profile.html', {
         'campaigns': campaigns,
@@ -45,12 +50,16 @@ def profile(request):
 
 @login_required
 def create_campaign_view(request):
+    """Создание новой кампании."""
     if request.method == 'POST':
         form = CampaignForm(request.POST)
         if form.is_valid():
-            campaign = create_campaign(form.cleaned_data['name'], request.user)
-            messages.success(request, 'Кампания создана!')
-            return redirect('campaign_detail', campaign_id=campaign.id)
+            try:
+                campaign = create_campaign(form.cleaned_data['name'], request.user)
+                messages.success(request, 'Кампания создана!')
+                return redirect('campaign_detail', campaign_id=campaign.id)
+            except ValueError as e:
+                messages.error(request, str(e))
     else:
         form = CampaignForm()
     return render(request, 'campaigns/campaign_form.html', {'form': form})
@@ -58,8 +67,14 @@ def create_campaign_view(request):
 
 @login_required
 def campaign_detail(request, campaign_id):
-    campaign = get_object_or_404(Campaign, id=campaign_id)
-    houses = campaign.houses.all()
+    """Страница кампании: дома, участники, формы добавления."""
+    try:
+        campaign = get_campaign_for_user(campaign_id, request.user)
+    except Http404:
+        messages.error(request, 'Кампания не найдена или у вас нет доступа.')
+        return redirect('profile')
+
+    data = get_campaign_detail_data(campaign)
     house_form = HouseForm()
     participant_form = AddParticipantForm()
 
@@ -67,24 +82,27 @@ def campaign_detail(request, campaign_id):
         if 'add_house' in request.POST:
             house_form = HouseForm(request.POST)
             if house_form.is_valid():
-                add_house_to_campaign(campaign, **house_form.cleaned_data)
-                messages.success(request, 'Дом добавлен!')
+                try:
+                    add_house_to_campaign(campaign, **house_form.cleaned_data)
+                    messages.success(request, 'Дом добавлен!')
+                except ValueError as e:
+                    messages.error(request, str(e))
                 return redirect('campaign_detail', campaign_id=campaign.id)
         elif 'add_participant' in request.POST:
             participant_form = AddParticipantForm(request.POST)
             if participant_form.is_valid():
-                username = participant_form.cleaned_data['username']
-                try:
-                    user_to_add = User.objects.get(username=username)
-                    campaign.participants.add(user_to_add)
-                    messages.success(request, f'{username} добавлен в кампанию!')
-                except User.DoesNotExist:
-                    messages.error(request, 'Пользователь не найден.')
+                success, msg = add_participant_to_campaign(
+                    campaign, participant_form.cleaned_data['username']
+                )
+                if success:
+                    messages.success(request, msg)
+                else:
+                    messages.error(request, msg)
                 return redirect('campaign_detail', campaign_id=campaign.id)
 
     return render(request, 'campaigns/campaign_detail.html', {
-        'campaign': campaign,
-        'houses': houses,
+        'campaign': data['campaign'],
+        'houses': data['houses'],
         'house_form': house_form,
         'participant_form': participant_form,
     })
@@ -92,27 +110,37 @@ def campaign_detail(request, campaign_id):
 
 @login_required
 def house_detail(request, campaign_id, house_id):
-    campaign = get_object_or_404(Campaign, id=campaign_id)
-    house = get_object_or_404(House, id=house_id, campaign=campaign)
-    visits = house.visits.order_by('-visited_at')
+    """Страница дома: все обходы (с пагинацией) и форма нового обхода."""
+    try:
+        campaign = get_campaign_for_user(campaign_id, request.user)
+        house, visits = get_house_with_visits(
+            campaign, house_id,
+            page_number=request.GET.get('page', 1)
+        )
+    except Http404:
+        messages.error(request, 'Дом не найден или у вас нет доступа.')
+        return redirect('profile')
 
     if request.method == 'POST':
         form = ApartmentVisitForm(request.POST)
         if form.is_valid():
-            data = form.cleaned_data
-            record_visit(
-                house=house,
-                visitor=request.user,
-                entrance=data['entrance'],
-                apartment_number=data['apartment_number'],
-                opened_door=data['opened_door'],
-                reaction=data.get('reaction'),
-                contact_name=data.get('contact_name'),
-                contact_phone=data.get('contact_phone'),
-                comment=data.get('comment')
-            )
-            messages.success(request, 'Обход зафиксирован!')
-            return redirect('house_detail', campaign_id=campaign.id, house_id=house.id)
+            try:
+                data = form.cleaned_data
+                record_visit(
+                    house=house,
+                    visitor=request.user,
+                    entrance=data['entrance'],
+                    apartment_number=data['apartment_number'],
+                    opened_door=data['opened_door'],
+                    reaction=data.get('reaction'),
+                    contact_name=data.get('contact_name'),
+                    contact_phone=data.get('contact_phone'),
+                    comment=data.get('comment')
+                )
+                messages.success(request, 'Обход зафиксирован!')
+                return redirect('house_detail', campaign_id=campaign.id, house_id=house.id)
+            except ValueError as e:
+                messages.error(request, str(e))
     else:
         form = ApartmentVisitForm()
 
@@ -126,7 +154,14 @@ def house_detail(request, campaign_id, house_id):
 
 @login_required
 def campaign_statistics(request, campaign_id):
-    campaign = get_object_or_404(Campaign, id=campaign_id)
-    stats = get_campaign_statistics(campaign)
-    stats['campaign'] = campaign
+    """Статистика по кампании."""
+    try:
+        campaign = get_campaign_for_user(campaign_id, request.user)
+        stats = get_campaign_statistics(campaign)
+        stats['campaign'] = campaign
+    except Http404:
+        messages.error(request, 'Кампания не найдена или у вас нет доступа.')
+        return redirect('profile')
     return render(request, 'campaigns/statistics.html', stats)
+
+
