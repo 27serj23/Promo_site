@@ -1,167 +1,83 @@
-# Представления: принимают запросы, вызывают сервисы, возвращают страницы
-from django.shortcuts import render, redirect
-from django.contrib.auth import login
-from django.contrib.auth.decorators import login_required
-from django.contrib import messages
-from django.http import Http404
-
-from .models import Profile
-from .forms import (
-    UserRegistrationForm, CampaignForm, HouseForm,
-    ApartmentVisitForm, AddParticipantForm
-)
-from .services import (
-    create_campaign, add_house_to_campaign, record_visit,
-    get_campaign_statistics, add_participant_to_campaign,
-    get_campaign_for_user, get_campaign_detail_data,
-    get_house_with_visits
-)
+# Модели базы данных для промо-сайта
+from django.db import models
+from django.contrib.auth.models import User
 
 
-def index(request):
-    """Главная страница."""
-    return render(request, 'campaigns/index.html')
+class Profile(models.Model):
+    """Дополнительные данные пользователя (телефон)."""
+    user = models.OneToOneField(User, on_delete=models.CASCADE, verbose_name='Пользователь')
+    phone = models.CharField(max_length=20, verbose_name='Телефон')
+
+    class Meta:
+        verbose_name = 'Профиль'
+        verbose_name_plural = 'Профили'
+
+    def __str__(self):
+        return f'Профиль {self.user.username}'
 
 
-def register(request):
-    """Регистрация нового пользователя."""
-    if request.method == 'POST':
-        form = UserRegistrationForm(request.POST)
-        if form.is_valid():
-            user = form.save()
-            login(request, user)
-            messages.success(request, 'Регистрация успешна!')
-            return redirect('profile')
-    else:
-        form = UserRegistrationForm()
-    return render(request, 'campaigns/register.html', {'form': form})
+class Campaign(models.Model):
+    """Промо-кампания: название, владелец, участники."""
+    name = models.CharField(max_length=200, verbose_name='Название')
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='campaigns', verbose_name='Владелец')
+    participants = models.ManyToManyField(User, related_name='participated_campaigns', blank=True, verbose_name='Участники')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата создания')
+
+    class Meta:
+        verbose_name = 'Кампания'
+        verbose_name_plural = 'Кампании'
+
+    def __str__(self):
+        return self.name
 
 
-@login_required
-def profile(request):
-    """Личный кабинет: данные профиля и список кампаний."""
-    campaigns = request.user.campaigns.all()
-    profile, _ = Profile.objects.get_or_create(user=request.user, defaults={'phone': ''})
-    return render(request, 'campaigns/profile.html', {
-        'campaigns': campaigns,
-        'profile': profile,
-    })
+class House(models.Model):
+    """Дом, который обходят в рамках кампании."""
+    campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name='houses', verbose_name='Кампания')
+    city = models.CharField(max_length=100, verbose_name='Город')
+    street = models.CharField(max_length=200, verbose_name='Улица')
+    house_number = models.CharField(max_length=20, verbose_name='Номер дома')
+    entrances = models.PositiveIntegerField(verbose_name='Количество подъездов')
+    apartments_per_entrance = models.PositiveIntegerField(verbose_name='Квартир в подъезде')
+
+    @property
+    def total_apartments(self):
+        """Общее количество квартир в доме."""
+        return self.entrances * self.apartments_per_entrance
+
+    class Meta:
+        verbose_name = 'Дом'
+        verbose_name_plural = 'Дома'
+
+    def __str__(self):
+        # Используем только поля самой модели, без дополнительных запросов
+        return f'{self.city}, {self.street}, {self.house_number}'
 
 
-@login_required
-def create_campaign_view(request):
-    """Создание новой кампании."""
-    if request.method == 'POST':
-        form = CampaignForm(request.POST)
-        if form.is_valid():
-            try:
-                campaign = create_campaign(form.cleaned_data['name'], request.user)
-                messages.success(request, 'Кампания создана!')
-                return redirect('campaign_detail', campaign_id=campaign.id)
-            except ValueError as e:
-                messages.error(request, str(e))
-    else:
-        form = CampaignForm()
-    return render(request, 'campaigns/campaign_form.html', {'form': form})
+class ApartmentVisit(models.Model):
+    """Запись об одном поквартирном обходе."""
+    house = models.ForeignKey(House, on_delete=models.CASCADE, related_name='visits', verbose_name='Дом')
+    entrance = models.PositiveIntegerField(verbose_name='Подъезд')
+    apartment_number = models.PositiveIntegerField(verbose_name='Номер квартиры')
+    opened_door = models.BooleanField(verbose_name='Дверь открыли')
+    reaction = models.CharField(
+        max_length=20,
+        choices=[('positive', 'Позитивно'), ('neutral', 'Нейтрально'), ('negative', 'Негативно')],
+        blank=True, null=True,
+        verbose_name='Реакция'
+    )
+    contact_name = models.CharField(max_length=100, blank=True, null=True, verbose_name='Имя контакта')
+    contact_phone = models.CharField(max_length=20, blank=True, null=True, verbose_name='Телефон контакта')
+    comment = models.TextField(blank=True, null=True, verbose_name='Комментарий')
+    visited_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата и время обхода')
+    visitor = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name='Кто обошёл')
 
+    class Meta:
+        verbose_name = 'Поквартирный обход'
+        verbose_name_plural = 'Поквартирные обходы'
 
-@login_required
-def campaign_detail(request, campaign_id):
-    """Страница кампании: дома, участники, формы добавления."""
-    try:
-        campaign = get_campaign_for_user(campaign_id, request.user)
-    except Http404:
-        messages.error(request, 'Кампания не найдена или у вас нет доступа.')
-        return redirect('profile')
-
-    data = get_campaign_detail_data(campaign)
-    house_form = HouseForm()
-    participant_form = AddParticipantForm()
-
-    if request.method == 'POST':
-        if 'add_house' in request.POST:
-            house_form = HouseForm(request.POST)
-            if house_form.is_valid():
-                try:
-                    add_house_to_campaign(campaign, **house_form.cleaned_data)
-                    messages.success(request, 'Дом добавлен!')
-                except ValueError as e:
-                    messages.error(request, str(e))
-                return redirect('campaign_detail', campaign_id=campaign.id)
-        elif 'add_participant' in request.POST:
-            participant_form = AddParticipantForm(request.POST)
-            if participant_form.is_valid():
-                success, msg = add_participant_to_campaign(
-                    campaign, participant_form.cleaned_data['username']
-                )
-                if success:
-                    messages.success(request, msg)
-                else:
-                    messages.error(request, msg)
-                return redirect('campaign_detail', campaign_id=campaign.id)
-
-    return render(request, 'campaigns/campaign_detail.html', {
-        'campaign': data['campaign'],
-        'houses': data['houses'],
-        'house_form': house_form,
-        'participant_form': participant_form,
-    })
-
-
-@login_required
-def house_detail(request, campaign_id, house_id):
-    """Страница дома: все обходы (с пагинацией) и форма нового обхода."""
-    try:
-        campaign = get_campaign_for_user(campaign_id, request.user)
-        house, visits = get_house_with_visits(
-            campaign, house_id,
-            page_number=request.GET.get('page', 1)
-        )
-    except Http404:
-        messages.error(request, 'Дом не найден или у вас нет доступа.')
-        return redirect('profile')
-
-    if request.method == 'POST':
-        form = ApartmentVisitForm(request.POST)
-        if form.is_valid():
-            try:
-                data = form.cleaned_data
-                record_visit(
-                    house=house,
-                    visitor=request.user,
-                    entrance=data['entrance'],
-                    apartment_number=data['apartment_number'],
-                    opened_door=data['opened_door'],
-                    reaction=data.get('reaction'),
-                    contact_name=data.get('contact_name'),
-                    contact_phone=data.get('contact_phone'),
-                    comment=data.get('comment')
-                )
-                messages.success(request, 'Обход зафиксирован!')
-                return redirect('house_detail', campaign_id=campaign.id, house_id=house.id)
-            except ValueError as e:
-                messages.error(request, str(e))
-    else:
-        form = ApartmentVisitForm()
-
-    return render(request, 'campaigns/house_detail.html', {
-        'campaign': campaign,
-        'house': house,
-        'visits': visits,
-        'visit_form': form,
-    })
-
-
-@login_required
-def campaign_statistics(request, campaign_id):
-    """Статистика по кампании."""
-    try:
-        campaign = get_campaign_for_user(campaign_id, request.user)
-        stats = get_campaign_statistics(campaign)
-        stats['campaign'] = campaign
-    except Http404:
-        messages.error(request, 'Кампания не найдена или у вас нет доступа.')
-        return redirect('profile')
-    return render(request, 'campaigns/statistics.html', stats)
+    def __str__(self):
+        # Не дёргаем house.__str__(), чтобы избежать лишнего запроса
+        return f'Обход кв.{self.apartment_number}'
 
 
