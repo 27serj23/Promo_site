@@ -12,6 +12,7 @@
 </ul>
 
 <h3>По домам</h3>
+{% if house_stats %}
 <table class="table">
     <thead>
         <tr>
@@ -34,4 +35,7 @@
         {% endfor %}
     </tbody>
 </table>
+{% else %}
+<p>Нет домов для статистики.</p>
+{% endif %}
 {% endblock %}
